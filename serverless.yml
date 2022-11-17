@@ -1,0 +1,99 @@
+service: serverless-todo-app
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs14.x
+  stage: dev
+  region: us-east-1
+  iam:
+    role: arn:aws:iam::685431172935:role/LabRole
+
+# lambda functions
+functions:
+  list:
+    handler: lambdas/list.getAllTodos
+    events:
+      - http:
+          path: todos
+          method: get
+          cors: true
+  create:
+    handler: lambdas/create.createTodo
+    events:
+      - http:
+          path: todos
+          method: post
+          cors: true
+  queue:
+    handler: lambdas/queue.queueTodo
+    events:
+      - http:
+          path: todos/{item_id}
+          method: delete
+          cors: true
+  delete:
+    handler: lambdas/delete.deleteSQSTodos
+    events:
+     - sns: 
+        arn: !Ref AlarmTopic
+        topicName: "delete-queue-alarm-topic"
+
+resources:
+  Resources:
+
+    # Dynamo DB to store todos
+    DynamoDBDatabase:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          -
+            AttributeName: "item_id"
+            AttributeType: "S"
+        KeySchema:
+          -
+            AttributeName: "item_id"
+            KeyType: "HASH"
+        BillingMode: PAY_PER_REQUEST
+        TableName: Todos
+
+    # SQS Queue to process deleted todos
+    DeleteQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: "delete-todo-queue"
+
+    # SNS Topic
+    AlarmTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        DisplayName: "delete-queue-alarm-notification"
+        TopicName: "delete-queue-alarm-topic"
+
+    # Cloudwatch Alarm with threshold >= 5 SQS messages
+    QueueDepthAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmDescription: Alarm if queue increases to more than 5 messages
+        Namespace: AWS/SQS
+        MetricName: ApproximateNumberOfMessagesVisible
+        Dimensions:
+          - 
+            Name: QueueName
+            Value: "delete-todo-queue"
+        Statistic: Sum
+        Period: "60" # 1 min
+        EvaluationPeriods: "1"
+        Threshold: "5"
+        ComparisonOperator: GreaterThanOrEqualToThreshold
+        AlarmActions:
+          - Ref: AlarmTopic
+        InsufficientDataActions:
+          - Ref: AlarmTopic
+
+    # S3 bucket to archieve todos before deleting
+    ArchiveBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: "todo-app-archive-bucket"
