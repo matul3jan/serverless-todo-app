@@ -10,7 +10,7 @@ const deletedItems = [];
 const SQS_THRESHOLD = 5;
 let deleted = 0;
 
-function archieveInS3() {
+function archieveInS3(callback) {
 
     let csv = "item_id,text\r\n";
     deletedItems.forEach(item => csv += `${item.item_id},${item.text}\r\n`);
@@ -31,7 +31,7 @@ function deleteSqsMessage(url, handle, callback) {
     const params = { QueueUrl: url, ReceiptHandle: handle };
     sqs.deleteMessage(params, (error, data) => {
         if (error) {
-            console.log("SQS Delete Error", error);
+            console.error("SQS Delete Error", error);
         } else {
             deleted++;
             if (deleted === SQS_THRESHOLD) {
@@ -59,9 +59,8 @@ function saveBeforeDeleting(url, message, callback) {
     const params = { TableName: 'Todos', Key: { 'item_id': item_id } };
     dynamoDb.get(params, (err, data) => {
         if (err) {
-            console.log("Error", err);
+            console.error("Error", err);
         } else {
-            console.log("archieve read Success", data.Item);
             deletedItems.push({ item_id: item_id, text: data.Item.text });
             deleteDynamoDbItem(url, message, callback);
         }
