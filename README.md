@@ -27,3 +27,9 @@ provider:
 ```
 serverless deploy
 ```
+
+### Destroy
+
+```
+serverless remove
+```
